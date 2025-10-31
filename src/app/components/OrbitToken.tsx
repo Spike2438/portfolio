@@ -38,6 +38,7 @@ const DESCRIPTIONS: Record<string, string> = {
   synology: "NAS & backup.\nServices maison.",
   vercel: "Edge/serverless.\nPréviews & analytics.",
   "vmware workstation": "Virtualisation desktop.\nLabs, snapshots, réseaux.",
+  render: "Cloud backend\nLabs, snapshots, réseaux.",
 };
 
 export default function OrbitToken({

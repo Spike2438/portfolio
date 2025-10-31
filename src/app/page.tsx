@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Skills from "./components/Skills";
+import ProjectsShowcase from "./components/ProjectsShowcase";
 
 type ThemeMode = "dark" | "light";
 
@@ -47,13 +48,13 @@ export default function Page() {
 
   // menu latéral
   const [showSideNav, setShowSideNav] = useState(false);
-  const [active, setActive] = useState<
-    "about" | "skills" | "projects" | "contact"
-  >("about");
-  const sections = ["about", "skills", "projects", "contact"] as const;
+  const [active, setActive] = useState<"about" | "skills" | "projects">(
+    "about"
+  );
+  const sections = ["about", "skills", "projects"] as const;
   const navRef = useRef<HTMLElement | null>(null);
 
-  // --- NEW: Titre en overlay fixe (interpolation origine → cible au-dessus du menu)
+  // Titre overlay (origine → cible)
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [measured, setMeasured] = useState(false);
   const [orig, setOrig] = useState({ left: 0, top: 0, height: 0 });
@@ -149,7 +150,7 @@ export default function Page() {
     const nr = navRef.current?.getBoundingClientRect();
     if (!tr || !nr) return;
     const origLeft = tr.left;
-    const origTop = tr.top;
+    const origTop = tr.top; // <-- fix
     const h = tr.height;
     const targetLeft = nr.left;
     const targetTop = nr.top - h * COMPACT_SCALE - GAP_ABOVE_NAV;
@@ -198,7 +199,6 @@ export default function Page() {
           glitchOn ? "is-on" : ""
         }`}
       />
-
       {/* Toggle */}
       <button
         ref={toggleRef}
@@ -211,7 +211,6 @@ export default function Page() {
       >
         {label}
       </button>
-
       {/* Menu latéral */}
       <nav
         ref={navRef}
@@ -221,7 +220,7 @@ export default function Page() {
         aria-label="Sections"
       >
         <ul className="flex flex-col gap-4">
-          {(["about", "skills", "projects", "contact"] as const).map((id) => (
+          {sections.map((id) => (
             <li key={id}>
               <a
                 href={`#${id}`}
@@ -239,20 +238,17 @@ export default function Page() {
                     ? "ABOUT"
                     : id === "skills"
                     ? "SKILLS"
-                    : id === "projects"
-                    ? "PROJECTS"
-                    : "CONTACT"}
+                    : "PROJECTS"}
                 </span>
               </a>
             </li>
           ))}
         </ul>
       </nav>
-
       {/* ABOUT / HERO */}
       <section
         id="about"
-        className="px-5 md:px-8 lg:px-12 py-20 md:py-28 max-w-6xl mx-auto"
+        className="px-5 md:px-8 lg:px-12 pt-20 md:pt-28 pb-10 md:pb-12 max-w-6xl mx-auto mt-8 md:mt-12"
       >
         <div className="flex flex-col-reverse md:flex-row items-start md:items-center gap-10">
           <div className="flex-1">
@@ -309,7 +305,6 @@ export default function Page() {
           </div>
         </div>
       </section>
-
       {/* Overlay FIXE du titre — suit une interpolation sans jamais clignoter */}
       {measured && (
         <div
@@ -325,38 +320,16 @@ export default function Page() {
           </h1>
         </div>
       )}
-
       {/* SKILLS */}
       <Skills />
-
       {/* PROJECTS */}
       <section
         id="projects"
-        className="px-5 md:px-8 lg:px-12 py-16 md:py-24 max-w-6xl mx-auto"
+        className="px-5 md:px-8 lg:px-12 pt-16 md:pt-24 pb-6 max-w-6xl mx-auto"
       >
-        <h2 className="text-2xl md:text-3xl font-semibold mb-8">Projets</h2>
-        <p className="text-[var(--muted)]">À compléter avec tes projets.</p>
+        <h2 className="text-2xl md:text-3xl font-semibold">Projets</h2>
       </section>
-
-      {/* CONTACT */}
-      <section
-        id="contact"
-        className="px-5 md:px-8 lg:px-12 py-16 md:py-24 max-w-6xl mx-auto"
-      >
-        <h2 className="text-2xl md:text-3xl font-semibold mb-6">Contact</h2>
-        <a
-          href="mailto:ton@email"
-          className="rounded-xl bg-white/10 hover:bg-white/15 text-sm md:text-base px-5 py-3 border border-white/10 inline-block"
-        >
-          Me contacter
-        </a>
-      </section>
-
-      <footer className="px-5 md:px-8 lg:px-12 py-10 border-t border-white/10 text-sm text-[var(--muted)]">
-        <div className="max-w-6xl mx-auto">
-          &copy; {new Date().getFullYear()} Antho
-        </div>
-      </footer>
+      <ProjectsShowcase />
 
       {/* Styles glitch (bouton + plein écran) */}
       <style jsx>{`

@@ -30,7 +30,8 @@ const TOKEN_IMAGES = [
   "/ReactNative.webp",
   "/Synology.webp",
   "/Vercel.webp",
-  "/VmwareWorkstation.webp", // <— vérifie bien l’orthographe du fichier
+  "/VmwareWorkstation.webp",
+  "/Render.webp",
 ] as const;
 
 export default function Skills({ id = "skills", title }: SkillsProps) {
