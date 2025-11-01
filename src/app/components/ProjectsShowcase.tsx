@@ -1,8 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, useEffect } from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { useRef, useEffect, useCallback } from "react";
+import {
+  motion,
+  useScroll,
+  useTransform,
+  useMotionValueEvent,
+} from "framer-motion";
 
 export default function ProjectsShowcase() {
   const ref = useRef<HTMLElement | null>(null);
@@ -15,13 +20,13 @@ export default function ProjectsShowcase() {
   const VIDEO_CLASS =
     "absolute inset-0 w-full h-full object-contain object-center bg-black"; // ratio préservé, 0 troncature
 
-  // === NOUVEAU : réglages des petites cards (Paper/Kodex/Marty) ===
+  // === Réglages des petites cards (Paper/Kodex/Marty) ===
   const IC_SHIFT_X = 32; // + droite / - gauche (px)
   const IC_SHIFT_Y = -8; // + bas    / - haut  (px)
-  const IC_MAXW = 360; // largeur max (px) — réduit la taille
+  const IC_MAXW = 360; // largeur max (px)
   const IC_VW = 86; // largeur relative (pour mobile)
-  const IC_BG_CLASS = "bg-black/60 backdrop-blur-sm"; // fond + opaque et lisible
-  const IC_BORDER_CLASS = "border-white/20"; // bordure un peu plus forte
+  const IC_BG_CLASS = "bg-black/60 backdrop-blur-sm"; // fond lisible
+  const IC_BORDER_CLASS = "border-white/20"; // bordure
 
   // Timeline strictement bornée à la vie du sticky (pin => release)
   const { scrollYProgress } = useScroll({
@@ -48,7 +53,7 @@ export default function ProjectsShowcase() {
   const M_CARD_CENTER = M_CARD_START + 0.18; // 0.86
   const M_CARD_LOCK = 0.94;
 
-  // ==== VIDÉOS ====
+  // ==== VIDÉOS (opacités animées) ====
   const pOpacity = useTransform(
     scrollYProgress,
     [0, X1_START, X1_END],
@@ -65,7 +70,7 @@ export default function ProjectsShowcase() {
     [0, 1, 1]
   );
 
-  // ==== CARDS ====
+  // ==== CARDS (positions/opacités) ====
   const pCardY = useTransform(
     scrollYProgress,
     [0, P_CARD_START, P_CARD_CENTER, P_CARD_EXIT],
@@ -99,20 +104,93 @@ export default function ProjectsShowcase() {
     [0, 1, 1]
   );
 
-  // Autoplay robuste
+  // ==== CONTROLE DE LECTURE (play/pause selon la timeline) ====
   const pRef = useRef<HTMLVideoElement>(null);
   const kRef = useRef<HTMLVideoElement>(null);
   const mRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const tryPlay = (el?: HTMLVideoElement | null) => {
-      if (!el) return;
-      const p = el.play();
-      if (p && typeof p.then === "function") p.catch(() => {});
-    };
-    tryPlay(pRef.current);
-    tryPlay(kRef.current);
-    tryPlay(mRef.current);
+
+  // Petite hystérésis pour éviter le flapping à la frontière
+  const HYST = 0.01;
+  type Key = "p" | "k" | "m" | null;
+  const activeKeyRef = useRef<Key>(null);
+
+  const pause = useCallback((el?: HTMLVideoElement | null) => {
+    if (!el) return;
+    try {
+      el.pause();
+    } catch {}
   }, []);
+
+  const play = useCallback((el?: HTMLVideoElement | null) => {
+    if (!el) return;
+    const p = el.play();
+    // Évite l'unhandled rejection sur iOS/Safari
+    // (mute + playsInline doivent suffire pour autoriser l'autoplay programmatique)
+    if (p && typeof (p as any).catch === "function")
+      (p as Promise<void>).catch(() => {});
+  }, []);
+
+  const setActive = useCallback(
+    (key: Key) => {
+      if (activeKeyRef.current === key) return;
+      activeKeyRef.current = key;
+      switch (key) {
+        case "p":
+          play(pRef.current);
+          pause(kRef.current);
+          pause(mRef.current);
+          break;
+        case "k":
+          pause(pRef.current);
+          play(kRef.current);
+          pause(mRef.current);
+          break;
+        case "m":
+          pause(pRef.current);
+          pause(kRef.current);
+          play(mRef.current);
+          break;
+        default:
+          pause(pRef.current);
+          pause(kRef.current);
+          pause(mRef.current);
+      }
+    },
+    [pause, play]
+  );
+
+  const resolveActiveFrom = useCallback(
+    (v: number): Key => {
+      if (v < X1_END - HYST) return "p"; // Paper visible
+      if (v >= X1_START - HYST && v < X2_END + HYST) return "k"; // Kodex visible
+      if (v >= X2_START - HYST) return "m"; // Marty visible
+      return null;
+    },
+    [HYST]
+  );
+
+  // 1) Init à l'arrivée sur la section
+  useEffect(() => {
+    setActive(resolveActiveFrom(scrollYProgress.get()));
+    // Pause sécurité au démontage
+    return () => {
+      try {
+        pRef.current?.pause();
+      } catch {}
+      try {
+        kRef.current?.pause();
+      } catch {}
+      try {
+        mRef.current?.pause();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 2) Suivi du scroll : bascule play/pause quand on change de vidéo active
+  useMotionValueEvent(scrollYProgress, "change", (v) => {
+    setActive(resolveActiveFrom(v));
+  });
 
   // Nappe de lisibilité
   const overlayOpacity = useTransform(scrollYProgress, [0, 1], [1, 1]);
@@ -144,6 +222,7 @@ export default function ProjectsShowcase() {
           >
             {/* ===== VIDÉOS : plein cadre, object-contain ===== */}
             <div className="absolute inset-0">
+              {/* IMPORTANT: pas d'autoplay ici, on gère via JS + scroll */}
               <motion.video
                 ref={mRef}
                 className={VIDEO_CLASS}
@@ -151,10 +230,10 @@ export default function ProjectsShowcase() {
                 muted
                 playsInline
                 loop
-                autoPlay
-                preload="auto"
-                onLoadedData={(e) => e.currentTarget.play().catch(() => {})}
+                preload="metadata"
                 style={{ opacity: mOpacity, willChange: "opacity" }}
+                disablePictureInPicture
+                controls={false}
               />
               <motion.video
                 ref={kRef}
@@ -163,10 +242,10 @@ export default function ProjectsShowcase() {
                 muted
                 playsInline
                 loop
-                autoPlay
-                preload="auto"
-                onLoadedData={(e) => e.currentTarget.play().catch(() => {})}
+                preload="metadata"
                 style={{ opacity: kOpacity, willChange: "opacity" }}
+                disablePictureInPicture
+                controls={false}
               />
               <motion.video
                 ref={pRef}
@@ -175,10 +254,10 @@ export default function ProjectsShowcase() {
                 muted
                 playsInline
                 loop
-                autoPlay
-                preload="auto"
-                onLoadedData={(e) => e.currentTarget.play().catch(() => {})}
+                preload="metadata"
                 style={{ opacity: pOpacity, willChange: "opacity" }}
+                disablePictureInPicture
+                controls={false}
               />
               <motion.div
                 className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(0,0,0,0.55)_0%,rgba(0,0,0,0.25)_45%,transparent_70%)]"

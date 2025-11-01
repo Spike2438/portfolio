@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Token from "./Token";
 
 type OrbitTokenProps = {
   images: ReadonlyArray<string> | string[];
-  radius?: number; // utilisé seulement si gap est undefined (compat)
-  ringPad?: number; // idem (compat)
+  radius?: number; // compat si gap est undefined
+  ringPad?: number; // compat si gap est undefined
   tokenSize?: number;
   orbitSec?: number;
   activateAt?: number; // distance d'activation
@@ -58,6 +59,13 @@ export default function OrbitToken({
 
   const imgs = useMemo(() => images, [images]);
 
+  // === Réglages de la POPUP LATERALE ===
+  const SIDE = "right" as const; // "right" | "left"
+  const SIDE_WIDTH = 300; // px
+  const SIDE_OFFSET = 28; // px (écart entre l’anneau et la popup)
+  const SIDE_BG = "rgba(8,14,24,0.88)"; // fond + opaque
+  const SIDE_THUMB = 44; // taille vignette image (px)
+
   // Rayon effectif : géométrique (gap) sinon compat (radius+ringPad)
   const ringR =
     gap !== undefined ? centerSize / 2 + gap + tokenSize / 2 : radius + ringPad;
@@ -91,6 +99,13 @@ export default function OrbitToken({
   };
   const keyOf = (label: string) => label.toLowerCase();
 
+  // Données du token survolé → pour la popup
+  const hoveredSrc = hoverIdx !== null ? (imgs[hoverIdx] as string) : null;
+  const hoveredLabel = hoveredSrc ? labelOf(hoveredSrc) : "";
+  const hoveredDesc = hoveredLabel
+    ? DESCRIPTIONS[keyOf(hoveredLabel)] ?? ""
+    : "";
+
   return (
     <div
       ref={hostRef}
@@ -120,7 +135,7 @@ export default function OrbitToken({
             const delay = `${Math.round(i * 18)}ms`;
             const isHovered = hoverIdx === i;
 
-            const label = labelOf(src);
+            const label = labelOf(src as string);
             const desc = DESCRIPTIONS[keyOf(label)] ?? "";
 
             return (
@@ -130,7 +145,6 @@ export default function OrbitToken({
                 style={
                   on
                     ? {
-                        // pivot au CENTRE: plus de translate(-50%,-50%)
                         transform: `translate(-50%, -50%) rotate(${deg}deg) translate(var(--R)) rotate(${-deg}deg)`,
                         transitionDelay: delay,
                         width: tokenSize,
@@ -151,12 +165,13 @@ export default function OrbitToken({
                   <Token
                     size={tokenSize}
                     speedSec={7}
-                    imgSrc={src}
+                    imgSrc={src as string}
                     spin={!isHovered}
                     angleDeg={isHovered ? 90 : undefined}
                   />
                 </div>
 
+                {/* Tooltip local (désactivé visuellement) */}
                 <div className="tooltip">
                   <strong className="tt-title">{label}</strong>
                   {desc ? (
@@ -184,11 +199,55 @@ export default function OrbitToken({
         />
       </div>
 
+      {/* === POPUP LATERALE (côté SKILLS) === */}
+      <div
+        className={`sideCard ${SIDE} ${hoverIdx !== null ? "show" : ""}`}
+        style={
+          {
+            ["--sideW" as any]: `${SIDE_WIDTH}px`,
+            ["--sideOffset" as any]: `${SIDE_OFFSET}px`,
+            ["--sideBg" as any]: SIDE_BG,
+          } as React.CSSProperties
+        }
+        aria-hidden={hoverIdx === null}
+      >
+        {hoverIdx !== null && (
+          <div className="sideInner">
+            <div className="sideHead">
+              {hoveredSrc ? (
+                <div
+                  className="sideThumb"
+                  style={{ width: SIDE_THUMB, height: SIDE_THUMB }}
+                >
+                  <Image
+                    src={hoveredSrc}
+                    alt={hoveredLabel}
+                    fill
+                    sizes={`${SIDE_THUMB}px`}
+                    className="object-contain"
+                    priority={false}
+                  />
+                </div>
+              ) : null}
+              <strong className="sideTitle">{hoveredLabel}</strong>
+            </div>
+            {hoveredDesc && (
+              <div className="sideDesc">
+                {hoveredDesc.split("\n").map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <style jsx>{`
         .orbitHost {
           position: relative;
           display: grid;
           place-items: center;
+          overflow: visible; /* pour laisser sortir la popup */
         }
         .center {
           position: relative;
@@ -226,7 +285,7 @@ export default function OrbitToken({
           position: absolute;
           top: 50%;
           left: 50%;
-          transform-origin: 50% 50%; /* pivot AU CENTRE */
+          transform-origin: 50% 50%;
           transition: transform 520ms cubic-bezier(0.22, 0.61, 0.36, 1);
           pointer-events: auto;
           display: grid;
@@ -252,53 +311,84 @@ export default function OrbitToken({
           filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
         }
 
+        /* Tooltip d’origine : masqué pour n’utiliser que la popup latérale */
         .tooltip {
-          position: absolute;
-          left: 50%;
-          top: -16px;
-          transform: translate(-50%, -100%);
-          padding: 8px 10px;
-          border-radius: 10px;
-          background: rgba(7, 19, 30, 0.92);
-          color: #e8f6ff;
-          font-size: 12px;
-          line-height: 1.25;
-          max-width: 220px;
-          white-space: normal;
-          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
-          opacity: 0;
-          translate: 0 6px;
-          pointer-events: none;
-          transition: opacity 160ms ease, translate 160ms ease;
-          text-align: center;
-        }
-        .tooltip::after {
-          content: "";
-          position: absolute;
-          left: 50%;
-          bottom: -6px;
-          transform: translateX(-50%);
-          border: 6px solid transparent;
-          border-top-color: rgba(7, 19, 30, 0.92);
-        }
-        .tt-title {
-          font-weight: 800;
-          letter-spacing: 0.02em;
-          margin-bottom: 2px;
-        }
-        .tt-desc {
-          opacity: 0.92;
-          font-size: 11px;
-        }
-
-        .item.hovered .tooltip {
-          opacity: 1;
-          translate: 0 0;
+          display: none !important;
         }
 
         @keyframes spin {
           to {
             transform: rotate(360deg);
+          }
+        }
+
+        /* ==== POPUP LATERALE ==== */
+        .sideCard {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%) scale(0.98);
+          width: var(--sideW);
+          pointer-events: none; /* non interactive -> évite de couper le hover */
+          opacity: 0;
+          transition: opacity 180ms ease, transform 220ms ease;
+          z-index: 80;
+        }
+        .sideCard.right {
+          left: calc(100% + var(--sideOffset));
+        }
+        .sideCard.left {
+          right: calc(100% + var(--sideOffset));
+        }
+        .sideCard.show {
+          opacity: 1;
+          transform: translateY(-50%) scale(1);
+        }
+        .sideInner {
+          background: var(--sideBg);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 14px;
+          box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45),
+            0 4px 14px rgba(0, 0, 0, 0.35);
+          padding: 14px 16px;
+          backdrop-filter: blur(6px);
+          color: #e6f0ff;
+        }
+        .sideHead {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 6px;
+        }
+        .sideThumb {
+          position: relative; /* requis pour Image fill */
+          flex: 0 0 auto;
+          border-radius: 8px;
+          overflow: hidden;
+          background: #0b1625;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+        .sideTitle {
+          font-weight: 800;
+          letter-spacing: 0.02em;
+          font-size: 15px;
+        }
+        .sideDesc {
+          font-size: 13px;
+          line-height: 1.35;
+          opacity: 0.95;
+        }
+
+        /* Responsive : si l’espace latéral est réduit, on fixe la popup sous l’anneau */
+        @media (max-width: 900px) {
+          .sideCard {
+            left: 50% !important;
+            right: auto !important;
+            top: calc(100% + 12px);
+            transform: translate(-50%, 0) scale(0.98);
+            width: min(92vw, var(--sideW));
+          }
+          .sideCard.show {
+            transform: translate(-50%, 0) scale(1);
           }
         }
       `}</style>
