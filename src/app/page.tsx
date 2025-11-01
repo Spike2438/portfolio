@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Skills from "./components/Skills";
 import ProjectsShowcase from "./components/ProjectsShowcase";
+import InfoCard from "./components/InfoCard";
 
 type ThemeMode = "dark" | "light";
 
@@ -30,23 +31,29 @@ const PROX_RADIUS = 140;
 const GLITCH_INTERVAL_MS = 2000;
 const GLITCH_DURATION_MS = 900;
 
-// Scroll config
-const COMPACT_SCALE = 0.5; // 50%
-const SCROLL_DIST = 160; // px pour atteindre l'état compact
-const GAP_ABOVE_NAV = 60; // espace au-dessus du menu (px)
+// Scroll / placement
+const COMPACT_SCALE = 0.5; // scale du titre compacté
+const SCROLL_DIST = 160; // distance pour atteindre l'état compact
+const GAP_ABOVE_CARD = 20; // espace au-dessus de l'InfoCard pour le titre
+
+// Offsets fins (ajustables)
+const INFOCARD_LIFT = 16; // ↑ remonte la carte (crée de l'espace sous la carte)
+const MENU_LIFT = 20; // ↑ remonte le menu (crée de l'espace sous le menu)
+const TITLE_DX = 50; // → décale le titre ( + droite / - gauche )
+const TITLE_DY = -30; // ↑ remonte le titre ( - vers le haut / + vers le bas )
 
 export default function Page() {
   const [ready, setReady] = useState(false);
   const [showPhoto, setShowPhoto] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>("dark");
 
-  // glitch plein écran contrôlé près du toggle
+  // glitch
   const [glitchOn, setGlitchOn] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const nearRef = useRef(false);
   const intervalRef = useRef<number | null>(null);
 
-  // menu latéral
+  // menu & sections
   const [showSideNav, setShowSideNav] = useState(false);
   const [active, setActive] = useState<"about" | "skills" | "projects">(
     "about"
@@ -54,14 +61,17 @@ export default function Page() {
   const sections = ["about", "skills", "projects"] as const;
   const navRef = useRef<HTMLElement | null>(null);
 
-  // Titre overlay (origine → cible)
+  // ref InfoCard pour centrer le titre au-dessus
+  const infoRef = useRef<HTMLDivElement | null>(null);
+
+  // Titre overlay
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [measured, setMeasured] = useState(false);
-  const [orig, setOrig] = useState({ left: 0, top: 0, height: 0 });
+  const [orig, setOrig] = useState({ left: 0, top: 0, height: 0, width: 0 });
   const [target, setTarget] = useState({ left: 0, top: 0 });
-  const [t, setT] = useState(0); // 0..1 progression scroll
+  const [t, setT] = useState(0);
 
-  // Fade-ins (page + photo + menu)
+  // Fade-ins
   useEffect(() => {
     const raf = requestAnimationFrame(() => setReady(true));
     const timer = setTimeout(() => setShowPhoto(true), PHOTO_DELAY_MS);
@@ -73,7 +83,7 @@ export default function Page() {
     };
   }, []);
 
-  // Charger / appliquer thème
+  // Thème
   useEffect(() => {
     const stored =
       typeof window !== "undefined" ? localStorage.getItem("theme") : null;
@@ -88,7 +98,7 @@ export default function Page() {
   const toggleTheme = () =>
     setTheme((tt) => (tt === "dark" ? "light" : "dark"));
 
-  // Glitch au voisinage du toggle
+  // Glitch à proximité du toggle
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const el = toggleRef.current;
@@ -127,39 +137,56 @@ export default function Page() {
     };
   }, []);
 
-  // Section active
+  // ===== Section active — méthode "centre de l'écran" (ultra stable) =====
   useEffect(() => {
-    const obs = new IntersectionObserver(
-      (entries) =>
-        entries.forEach(
-          (entry) =>
-            entry.isIntersecting && setActive(entry.target.id as typeof active)
-        ),
-      { rootMargin: "-40% 0px -50% 0px", threshold: 0.1 }
-    );
-    sections.forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) obs.observe(el);
-    });
-    return () => obs.disconnect();
+    const ids = ["about", "skills", "projects"] as const;
+
+    const updateActiveByCenter = () => {
+      const mid = window.innerHeight / 2;
+      let bestId: (typeof ids)[number] = ids[0];
+      let bestDist = Infinity;
+
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        const center = r.top + r.height / 2;
+        const dist = Math.abs(center - mid);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestId = id;
+        }
+      }
+      setActive(bestId);
+    };
+
+    updateActiveByCenter();
+    window.addEventListener("scroll", updateActiveByCenter, { passive: true });
+    window.addEventListener("resize", updateActiveByCenter);
+    return () => {
+      window.removeEventListener("scroll", updateActiveByCenter);
+      window.removeEventListener("resize", updateActiveByCenter);
+    };
   }, []);
 
-  // Mesurer positions origine (titre) et cible (au-dessus du menu)
+  // Mesures : origine (titre) → cible (au-dessus de la carte, centré)
   const measure = () => {
     const tr = titleRef.current?.getBoundingClientRect();
-    const nr = navRef.current?.getBoundingClientRect();
-    if (!tr || !nr) return;
-    const origLeft = tr.left;
-    const origTop = tr.top; // <-- fix
+    const ir = infoRef.current?.getBoundingClientRect();
+    if (!tr || !ir) return;
+
     const h = tr.height;
-    const targetLeft = nr.left;
-    const targetTop = nr.top - h * COMPACT_SCALE - GAP_ABOVE_NAV;
-    setOrig({ left: origLeft, top: origTop, height: h });
+    const w = tr.width;
+
+    const targetLeft = ir.left + (ir.width - w * COMPACT_SCALE) / 2 + TITLE_DX;
+    const targetTop = ir.top - h * COMPACT_SCALE - GAP_ABOVE_CARD + TITLE_DY;
+
+    setOrig({ left: tr.left, top: tr.top, height: h, width: w });
     setTarget({ left: targetLeft, top: targetTop });
     setMeasured(true);
   };
+
   useEffect(() => {
-    // mesurer après affichage du menu
     const id = requestAnimationFrame(measure);
     window.addEventListener("resize", measure);
     return () => {
@@ -168,7 +195,7 @@ export default function Page() {
     };
   }, [showSideNav]);
 
-  // Progression de scroll 0..1
+  // Progression scroll
   useEffect(() => {
     const onScroll = () => setT(Math.min(1, window.scrollY / SCROLL_DIST));
     onScroll();
@@ -176,7 +203,7 @@ export default function Page() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Interpolation linéaire
+  // Lerp
   const lerp = (a: number, b: number, x: number) => a + (b - a) * x;
   const curLeft = lerp(orig.left, target.left, t);
   const curTop = lerp(orig.top, target.top, t);
@@ -192,13 +219,14 @@ export default function Page() {
         opacity: ready ? 1 : 0,
       }}
     >
-      {/* overlay glitch dark⇄light */}
+      {/* overlay glitch */}
       <div
         aria-hidden
         className={`fixed inset-0 pointer-events-none z-40 page-glitch ${
           glitchOn ? "is-on" : ""
         }`}
       />
+
       {/* Toggle */}
       <button
         ref={toggleRef}
@@ -211,40 +239,59 @@ export default function Page() {
       >
         {label}
       </button>
-      {/* Menu latéral */}
-      <nav
-        ref={navRef}
-        className={`fixed left-4 md:left-8 top-28 md:top-40 z-30 select-none transition-all duration-700 ease-out ${
-          showSideNav ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-6"
-        }`}
-        aria-label="Sections"
+
+      {/* ====== ASIDE FIXE (bas gauche) : InfoCard au-dessus du menu ====== */}
+      <div
+        className={`fixed left-4 md:left-8 top-24 bottom-6 z-30
+                    w-[min(92vw,320px)]
+                    flex flex-col justify-end gap-4
+                    transition-all duration-700 ease-out
+                    ${
+                      showSideNav
+                        ? "opacity-100 translate-x-0"
+                        : "opacity-0 -translate-x-6"
+                    }`}
+        aria-hidden={!showSideNav}
       >
-        <ul className="flex flex-col gap-4">
-          {sections.map((id) => (
-            <li key={id}>
-              <a
-                href={`#${id}`}
-                className={`group flex items-center gap-3 uppercase tracking-[0.18em] font-semibold text-xs md:text-sm ${
-                  active === id ? "text-[var(--ink)]" : "text-[var(--muted)]"
-                } transition-colors`}
-              >
-                <span
-                  className={`h-[2px] w-10 rounded bg-white/30 origin-left transition-all ${
-                    active === id ? "w-14 bg-white/80" : "w-10"
-                  }`}
-                />
-                <span>
-                  {id === "about"
-                    ? "ABOUT"
-                    : id === "skills"
-                    ? "SKILLS"
-                    : "PROJECTS"}
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
+        {/* InfoCard avec ref & lift */}
+        <div ref={infoRef} style={{ marginBottom: INFOCARD_LIFT }}>
+          <InfoCard />
+        </div>
+
+        {/* Menu (lift) */}
+        <nav
+          ref={navRef}
+          aria-label="Sections"
+          style={{ marginBottom: MENU_LIFT }}
+        >
+          <ul className="flex flex-col gap-4 select-none">
+            {sections.map((id) => (
+              <li key={id}>
+                <a
+                  href={`#${id}`}
+                  className={`group flex items-center gap-3 uppercase tracking-[0.18em] font-semibold text-xs md:text-sm ${
+                    active === id ? "text-[var(--ink)]" : "text-[var(--muted)]"
+                  } transition-colors`}
+                >
+                  <span
+                    className={`h-[2px] w-10 rounded bg-white/30 origin-left transition-all ${
+                      active === id ? "w-14 bg-white/80" : "w-10"
+                    }`}
+                  />
+                  <span>
+                    {id === "about"
+                      ? "ABOUT"
+                      : id === "skills"
+                      ? "SKILLS"
+                      : "PROJECTS"}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </div>
+
       {/* ABOUT / HERO */}
       <section
         id="about"
@@ -252,7 +299,7 @@ export default function Page() {
       >
         <div className="flex flex-col-reverse md:flex-row items-start md:items-center gap-10">
           <div className="flex-1">
-            {/* Titre original pour garder la place → rendu invisible après mesure */}
+            {/* Titre source (invisible après mesure) */}
             <h1
               ref={titleRef}
               className={`text-4xl md:text-6xl font-semibold leading-tight ${
@@ -268,22 +315,7 @@ export default function Page() {
             >
               I’m a developer passionate about crafting accessible,
               pixel-perfect user interfaces that blend thoughtful design with
-              robust engineering. My favorite work lies at the intersection of
-              design and development, creating experiences that not only look
-              great but are meticulously built for performance and usability.
-              Currently, I'm a Senior Front-End Engineer at Klaviyo,
-              specializing in accessibility. I contribute to the creation and
-              maintenance of UI components that power Klaviyo’s frontend,
-              ensuring our platform meets web accessibility standards and best
-              practices to deliver an inclusive user experience. In the past,
-              I've had the opportunity to develop software across a variety of
-              settings — from advertising agencies and large corporations to
-              start-ups and small digital product studios. Additionally, I also
-              released a comprehensive video course a few years ago, guiding
-              learners through building a web app with the Spotify API. In my
-              spare time, I’m usually climbing, playing tennis, hanging out with
-              my wife and two cats, or running around Hyrule searching for Korok
-              seeds K o r o k s e e d s .
+              robust engineering…
             </p>
           </div>
 
@@ -305,7 +337,8 @@ export default function Page() {
           </div>
         </div>
       </section>
-      {/* Overlay FIXE du titre — suit une interpolation sans jamais clignoter */}
+
+      {/* Titre overlay — centré au-dessus de l’InfoCard */}
       {measured && (
         <div
           aria-hidden
@@ -315,13 +348,21 @@ export default function Page() {
             transformOrigin: "left top",
           }}
         >
-          <h1 className="text-4xl md:text-6xl font-semibold leading-tight">
+          <h1 className="text-4xl md:text-6xl font-semibold leading-tight text-center">
             Anthony <span className="text-sky-300">Edon</span>
           </h1>
         </div>
       )}
+
       {/* SKILLS */}
-      <Skills />
+      <section
+        id="skills"
+        className="px-5 md:px-8 lg:px-12 pt-16 md:pt-24 pb-6 max-w-6xl mx-auto scroll-mt-28 md:scroll-mt-40 min-h-[40vh]"
+      >
+        <h2 className="sr-only">Skills</h2>
+        <Skills />
+      </section>
+
       {/* PROJECTS */}
       <section
         id="projects"
@@ -331,7 +372,7 @@ export default function Page() {
       </section>
       <ProjectsShowcase />
 
-      {/* Styles glitch (bouton + plein écran) */}
+      {/* Styles glitch */}
       <style jsx>{`
         .theme-toggle {
           overflow: visible;
